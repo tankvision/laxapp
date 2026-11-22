@@ -118,7 +118,12 @@
   .chev{color:var(--muted); font-size:11px; transition:transform .15s ease;}
   .chev[data-collapsed="true"]{transform:rotate(-90deg);}
 
-  .periodbar{display:flex; justify-content:center;}
+  .periodbar{display:flex; flex-direction:column; align-items:center; gap:8px;}
+  .fmt-toggle{display:flex; gap:4px; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:4px;}
+  .fmtbtn{background:transparent; border:none; color:var(--muted); border-radius:999px; padding:6px 16px; font-size:13px; font-weight:800; cursor:pointer;}
+  .fmtbtn[data-on="true"]{background:var(--card2); color:var(--ink);}
+  .fmtbtn:active{transform:scale(.97);}
+  .setup-line{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:700;}
   .sonnum{display:flex; align-items:center; justify-content:center; gap:9px; margin-bottom:14px;}
   .sonnumin{width:72px; background:var(--bg2); border:1px solid var(--line); border-radius:10px; color:var(--ink); font-size:20px; font-weight:800; text-align:center; padding:9px 6px; outline:none; font-family:ui-monospace,Menlo,monospace;}
   .sonnumin:focus{border-color:var(--ball);}
@@ -205,11 +210,16 @@
     </div>
 
     <div class="periodbar">
+      <div class="fmt-toggle">
+        <button class="fmtbtn" id="fmtQuarters" data-fmt="quarters" data-on="true">Quarters</button>
+        <button class="fmtbtn" id="fmtHalves" data-fmt="halves">Halves</button>
+      </div>
       <div class="period">
         <button class="istep" id="pPrev" aria-label="Previous period">&lsaquo;</button>
         <span class="lbl" id="pLbl">1st Q</span>
         <button class="istep" id="pNext" aria-label="Next period">&rsaquo;</button>
       </div>
+      <div class="setup-line" id="setupLine">Quarters &middot; 12 min &middot; stop clock</div>
     </div>
 
     <button class="clk-enable" id="clockShow">+ Game clock</button>
@@ -388,9 +398,11 @@
 (function(){
   "use strict";
   var KEY = "laxTracker.v1";
-  var PERIODS = ["1st Q","2nd Q","3rd Q","4th Q","OT"];
+  var PERIOD_SETS = { quarters:["1st Q","2nd Q","3rd Q","4th Q","OT"], halves:["1st Half","2nd Half","OT"] };
+  var FORMAT_DEF = { quarters:{ min:12, clock:"stop clock" }, halves:{ min:20, clock:"running clock" } };
+  function periods(){ return PERIOD_SETS[state.format] || PERIOD_SETS.quarters; }
 
-  var state = { usName:"", opponent:"", events:[], periodIndex:0, possessions:0, sonNumber:"", faceoffPlayer:"", penCollapsed:false, lossCollapsed:false, goalCollapsed:false, playerCollapsed:false, faceCollapsed:false, clock:{ enabled:false, minutes:12, running:false, endAt:0, remaining:720000 } };
+  var state = { usName:"", opponent:"", events:[], periodIndex:0, possessions:0, sonNumber:"", faceoffPlayer:"", format:"quarters", penCollapsed:false, lossCollapsed:false, goalCollapsed:false, playerCollapsed:false, faceCollapsed:false, clock:{ enabled:false, minutes:12, running:false, endAt:0, remaining:720000 } };
   var ui = { unassisted:false, guest:false, penaltyTeam:"us" };
 
   function load(){
@@ -413,6 +425,8 @@
           if(state.clock.running && !(state.clock.endAt > Date.now())){ state.clock.running = false; state.clock.remaining = 0; }
         }
         state.faceoffPlayer = s.faceoffPlayer || "";
+        state.format = (s.format==="halves") ? "halves" : "quarters";
+        state.periodIndex = Math.min(state.periodIndex, periods().length-1);
         state.penCollapsed = !!s.penCollapsed;
         state.lossCollapsed = !!s.lossCollapsed;
         state.goalCollapsed = !!s.goalCollapsed;
@@ -449,7 +463,7 @@
 
   function add(ev){
     ev.id = Date.now() + "_" + Math.random().toString(36).slice(2,7);
-    ev.period = PERIODS[state.periodIndex];
+    ev.period = periods()[state.periodIndex];
     state.events.push(ev); save(); render();
   }
 
@@ -468,7 +482,8 @@
     $("themScore").textContent = them;
     $("usNameLbl").textContent = (state.usName.trim() || "Us").slice(0,12);
     $("themName").textContent = (state.opponent.trim() || "Them").slice(0,12);
-    $("pLbl").textContent = PERIODS[state.periodIndex];
+    $("pLbl").textContent = periods()[state.periodIndex];
+    syncSetup();
     $("possNum").textContent = state.possessions;
     $("lossCount").textContent = losses;
     $("themGoal").textContent = "+ " + oppName + " scored";
@@ -644,7 +659,7 @@
     m = Math.min(60, Math.max(1, m));
     state.clock.minutes = m;
     if(!state.clock.running){ state.clock.remaining = m*60000; }
-    save(); updateClock();
+    save(); updateClock(); syncSetup();
   }
   function clkEnable(on){
     state.clock.enabled = on;
@@ -652,11 +667,30 @@
     save(); updateClock();
   }
 
+  function syncSetup(){
+    var fmt = state.format;
+    $("fmtQuarters").setAttribute("data-on", fmt==="quarters" ? "true":"false");
+    $("fmtHalves").setAttribute("data-on", fmt==="halves" ? "true":"false");
+    var label = fmt==="halves" ? "Halves" : "Quarters";
+    $("setupLine").textContent = label + " · " + state.clock.minutes + " min · " + FORMAT_DEF[fmt].clock;
+  }
+  function setFormat(fmt){
+    if(fmt!=="quarters" && fmt!=="halves") return;
+    if(fmt===state.format) return;
+    state.format = fmt;
+    state.periodIndex = 0;
+    var def = FORMAT_DEF[fmt];
+    state.clock.minutes = def.min;
+    if(!state.clock.running){ state.clock.remaining = def.min*60000; }
+    $("clkMin").value = def.min;
+    save(); render(); updateClock();
+  }
+
   function stepPeriod(dir){
-    var next = Math.min(PERIODS.length-1, Math.max(0, state.periodIndex + dir));
+    var next = Math.min(periods().length-1, Math.max(0, state.periodIndex + dir));
     if(next !== state.periodIndex){
       state.periodIndex = next;
-      if(dir > 0) add({ kind:"period", label: PERIODS[next] });
+      if(dir > 0) add({ kind:"period", label: periods()[next] });
       else { save(); render(); }
     }
   }
@@ -742,7 +776,7 @@
       okLabel:"Reset game",
       onOk:function(){
         var ck = state.clock;
-        state = { usName:state.usName, opponent:"", events:[], periodIndex:0, possessions:0, sonNumber:state.sonNumber, faceoffPlayer:state.faceoffPlayer, penCollapsed:state.penCollapsed, lossCollapsed:state.lossCollapsed, goalCollapsed:state.goalCollapsed, playerCollapsed:state.playerCollapsed, faceCollapsed:state.faceCollapsed,
+        state = { usName:state.usName, opponent:"", events:[], periodIndex:0, possessions:0, sonNumber:state.sonNumber, faceoffPlayer:state.faceoffPlayer, format:state.format, penCollapsed:state.penCollapsed, lossCollapsed:state.lossCollapsed, goalCollapsed:state.goalCollapsed, playerCollapsed:state.playerCollapsed, faceCollapsed:state.faceCollapsed,
           clock:{ enabled:ck.enabled, minutes:ck.minutes, running:false, endAt:0, remaining:ck.minutes*60000 } };
         ui = { unassisted:false, guest:false, penaltyTeam:"us" };
         $("opp").value = ""; $("scorer").value = ""; $("assist").value = ""; $("note").value = ""; $("penPlayer").value = "";
@@ -763,6 +797,9 @@
   $("opp").addEventListener("input", function(e){ state.opponent = e.target.value; save(); render(); });
   $("pPrev").addEventListener("click", function(){ stepPeriod(-1); });
   $("pNext").addEventListener("click", function(){ stepPeriod(1); });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-fmt]"), function(b){
+    b.addEventListener("click", function(){ setFormat(b.getAttribute("data-fmt")); });
+  });
 
   $("scorer").addEventListener("input", function(e){ e.target.value = e.target.value.replace(/[^0-9]/g,""); render(); });
   $("assist").addEventListener("input", function(e){ e.target.value = e.target.value.replace(/[^0-9]/g,""); });
