@@ -54,8 +54,8 @@
   .name-in::placeholder{color:var(--muted); opacity:.55;}
   .name-in:focus{color:var(--ink); border-bottom-color:var(--line2);}
   .board .num{transition:font-size .18s ease;}
-  .board.compact{padding:8px 14px; box-shadow:0 10px 26px rgba(0,0,0,.5);}
-  .board.compact .num{font-size:clamp(30px,10vw,42px);}
+  .board.compact{padding:10px 14px; box-shadow:0 10px 26px rgba(0,0,0,.5);}
+  .board.compact .num{font-size:clamp(36px,11vw,48px);}
   .board.compact .hash{opacity:0;}
   .board.compact .dash{font-size:22px;}
   .board.compact .name-in{font-size:10px; border-bottom-color:transparent;}
@@ -872,9 +872,16 @@
   setInterval(function(){ if(state.clock.enabled) updateClock(); }, 250);
 
   var boardEl = $("board");
-  function onScroll(){ if(window.scrollY > 24){ boardEl.classList.add("compact"); } else { boardEl.classList.remove("compact"); } }
+  var isCompact = false, scrollTicking = false;
+  function applyScroll(){
+    scrollTicking = false;
+    var y = window.scrollY || window.pageYOffset || 0;
+    if(!isCompact && y > 64){ isCompact = true; boardEl.classList.add("compact"); }
+    else if(isCompact && y < 16){ isCompact = false; boardEl.classList.remove("compact"); }
+  }
+  function onScroll(){ if(!scrollTicking){ scrollTicking = true; requestAnimationFrame(applyScroll); } }
   window.addEventListener("scroll", onScroll, { passive:true });
-  onScroll();
+  applyScroll();
 })();
 </script>
 </body>
